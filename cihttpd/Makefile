@@ -1,5 +1,5 @@
-CFLAGS=-O2 -g -DLOG_LEVEL=4 -Wall -Wno-unused-result
-USE=$(CFLAGS) -DUSE_MAGIC -DWITH_CGI -DWITH_REWRITE
+CFLAGS=-O2 -g -DLOG_LEVEL=5 -Wall -Wno-unused-result
+USE=$(CFLAGS) -DUSE_MAGIC -DWITH_CGI -DWITH_REWRITE -DWITH_DAV
 LIBS=-lmagic -lz -pthread
 
 ihttpd: ihttpd.c

@@ -537,10 +537,6 @@ int client_read_request(struct buffered_fd_t *socket_wrapper, struct request_t *
 }
 
 int client_read_post_data(struct buffered_fd_t *socket_wrapper, struct request_t *request, int fd_target, int forward_chunk_headers_to_target) {
-	if(strcmp(request->method, "POST") != 0 && strcmp(request->method, "PUT") != 0) {
-		return -1;
-	}
-
 	// Read POST data
 	char *length_header = extract_header(request->headers, "content-length");
 	if(length_header) {
@@ -561,6 +557,10 @@ int client_read_post_data(struct buffered_fd_t *socket_wrapper, struct request_t
 	else {
 		char *transfer_encoding = extract_header(request->headers, "transfer-encoding");
 		if(!transfer_encoding) {
+			if(strcmp(request->method, "POST") != 0 && strcmp(request->method, "PUT") != 0) {
+				return -1;
+			}
+
 			client_fail_with_error(socket_wrapper, request, 400);
 		}
 		if(strcmp(transfer_encoding, "chunked") != 0) {
@@ -740,11 +740,24 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 		if(!file_info.st_ino) {
 			client_send_error(socket_wrapper, 404);
 		}
+#ifdef WITH_DAV
+		else if(strcasecmp(request.method, "OPTIONS") == 0) {
+			char header[1024];
+			int header_length = snprintf(header, 1024, "HTTP/1.1 200 Ok\r\nAllow: OPTIONS, GET, HEAD, POST, PUT, DELETE, COPY, MOVE\r\n"
+				"Allow: MKCOL, PROPFIND, PROPPATCH\r\nDAV: 1, 2, ordered-collections\r\nConnection: %s\r\nContent-Length: 0\r\n\r\n", connection_type);
+			send(socket, header, header_length, 0);
+		}
+#endif
 		else if(S_ISDIR(file_info.st_mode)) {
 			client_flush_post_data(socket_wrapper, &request);
+			int found_index = 0;
+
+#ifdef WITH_DAV
+			int is_dav = strcasecmp(request.method, "PROPFIND") == 0 ? TRUE : FALSE;
+			if(!is_dav) {
+#endif
 
 			// Display directory index if this is a directory and one exists
-			int found_index = 0;
 			char alternative[PATH_MAX];
 			const char **index_name;
 			for(index_name = directory_index_extensions; *index_name; index_name++) {
@@ -762,6 +775,10 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 				}
 			}
 
+#ifdef WITH_DAV
+			} // !is_dav
+#endif
+
 			if(found_index) {
 				// Nothing
 			}
@@ -774,15 +791,43 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 			else {
 				plog(L_DEBUG, "Is a directory. Sending directory index.");
 
-				char header[1024];
-				int header_length = snprintf(header, 1024, "HTTP/1.1 200 Ok\r\nConnection: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n1f\r\n<h1>Directory contents</h1><ul>\r\n", connection_type);
-				send(socket, header, header_length, 0);
+#ifdef WITH_DAV
+				if(is_dav) {
+					char header[1024];
+					int header_length = snprintf(header, 1024,
+						"HTTP/1.1 207 Multi-Status\r\nConnection: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: text/xml; charset=\"utf-8\"\r\n\r\n"
+						"%lx\r\n<?xml version='1.0' encoding='utf-8'?>\r\n<D:multistatus xmlns:D='DAV:'><D:response><D:href>%s</D:href><D:propstat><D:prop><D:resourcetype><D:collection/>"
+						"</D:resourcetype></D:prop><D:status>HTTP/1.1 200 Ok</D:status></D:propstat></D:response>\r\n", connection_type, 40 + 198 + strlen(request.uri), request.uri);
+					send(socket, header, header_length, 0);
+				}
+				else {
+					char header[1024];
+#endif
+					int header_length = snprintf(header, 1024, "HTTP/1.1 200 Ok\r\nConnection: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n1f\r\n<h1>Directory contents</h1><ul>\r\n", connection_type);
+					send(socket, header, header_length, 0);
+#ifdef WITH_DAV
+				}
+
+				int depth = 0;
+				char *depths = extract_header(request.headers, "depth");
+				if(depths) {
+					if(depths[0] != '0') {
+						depth = 1;
+					}
+					free(depths);
+				}
+				if(is_dav && depth == 0) {
+					// Finished
+				}
+				else {
+#endif
 
 				DIR *dir = opendir(full_file);
 				struct dirent *dir_contents;
 				if(readdir(dir) && strcmp(".", request.uri) != 0) {
 					while((dir_contents = readdir(dir))) {
-						char buf[255 * 2 + 10];
+						if(dir_contents->d_name[0] == '.') continue;
+						char buf[1024];
 						if(dir_contents->d_type == DT_DIR) {
 							int pos = strlen(dir_contents->d_name);
 							if(pos < PATH_MAX) {
@@ -790,13 +835,41 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 								dir_contents->d_name[pos + 1] = 0;
 							}
 						}
-						int length = snprintf(buf, sizeof(buf), "%lx\r\n<li><a href='%s'>%s</a></li>\r\n", 24 + 2 * strlen(dir_contents->d_name), dir_contents->d_name, dir_contents->d_name);
-						send(socket, buf, length, 0);
+#ifdef WITH_DAV
+						if(is_dav) {
+							char props[900];
+							int props_len;
+							if(dir_contents->d_type == DT_DIR) {
+								props_len = snprintf(props, 900, "<D:resourcetype><D:collection/></D:resourcetype>");
+							}
+							else {
+								props_len = snprintf(props, 900, "<D:resorcetype/>");
+							}
+							int length = snprintf(buf, sizeof(buf), "%lx\r\n<D:response><D:href>%s%s</D:href><D:propstat><D:prop>%s</D:prop><D:status>HTTP/1.1 200 Ok</D:status></D:propstat></D:response>\r\n",
+								120 + strlen(dir_contents->d_name) + strlen(request.uri) + props_len, request.uri, dir_contents->d_name, props);
+							send(socket, buf, length, 0);
+						}
+						else {
+#endif
+							int length = snprintf(buf, sizeof(buf), "%lx\r\n<li><a href='%s'>%s</a></li>\r\n", 24 + 2 * strlen(dir_contents->d_name), dir_contents->d_name, dir_contents->d_name);
+							send(socket, buf, length, 0);
+#ifdef WITH_DAV
+						}
+#endif
 					}
 				}
 
-				send(socket, "0\r\n\r\n", 5, 0);
 				closedir(dir);
+
+#ifdef WITH_DAV
+				} // is_dav && depth == 0
+
+				if(is_dav) {
+					send(socket, "10\r\n</D:multistatus>\r\n", 22, 0);
+				}
+#endif
+
+				send(socket, "0\r\n\r\n", 5, 0);
 			}
 		}
 		else if(!(file_info.st_mode & S_IROTH)) {
@@ -809,7 +882,24 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 
 #ifdef WITH_CGI
 			const char *cgi_helper = find_cgi_helper(full_file);
-			if(cgi_helper || file_info.st_mode & S_IXOTH) {
+#endif
+#ifdef WITH_DAV
+			int is_dav = strcasecmp(request.method, "PROPFIND") == 0 ? TRUE : FALSE;
+#endif
+
+			if(0);
+#ifdef WITH_DAV
+			else if(is_dav) {
+				client_flush_post_data(socket_wrapper, &request);
+				char header[1024];
+				int header_length = snprintf(header, 1024,
+					"HTTP/1.1 207 Multi-Status\r\nConnection: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: text/xml; charset=\"utf-8\"\r\n\r\n"
+					"%lx\r\n<?xml version='1.0' encoding='utf-8'?>\r\n<D:multistatus xmlns:D='DAV:'><D:response><D:href>%s</D:href><D:propstat><D:prop><D:resourcetype/></D:prop><D:status>HTTP/1.1 200 Ok</D:status></D:propstat></D:response></D:multistatus>\r\n0\r\n\r\n", connection_type, 223 + strlen(request.uri), request.uri);
+				send(socket, header, header_length, 0);
+			}
+#endif
+#ifdef WITH_CGI
+			else if(cgi_helper || file_info.st_mode & S_IXOTH) {
 				if(!cgi_helper) cgi_helper = full_file;
 
 				plog(L_DEBUG, "Using CGI helper %s to serve %s", cgi_helper, full_file);
@@ -1109,9 +1199,7 @@ void *client_thread(struct client_thread_data_t *client_info_ptr) {
 				}
 
 				close(file);
-#ifdef WITH_CGI
 			}
-#endif
 		}
 		else {
 			client_flush_post_data(socket_wrapper, &request);
