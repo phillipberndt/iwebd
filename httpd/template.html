@@ -1,0 +1,284 @@
+<!DOCTYPE HTML>
+<head>
+<meta charset="utf-8">
+<title>Directory Index for {{.DirName}}</title>
+<style>
+/* VFX */
+.hide {
+    background: #faca52;
+    opacity: 0;
+    transition: opacity .5s linear;
+}
+
+.new {
+    background: #faca52;
+}
+
+.noLongerNew {
+    background: none;
+	transition: background .5s linear;
+}
+
+body.dragOver {
+	background: #eef;
+}
+
+/* Overall design */
+body {
+    font-family: sans-serif;
+    margin: 0;
+}
+
+h1 {
+    background: #eee;
+    padding: .5em;
+    margin: 0;
+}
+
+#download-link {
+    position: absolute;
+    right: 1em;
+    margin-top: 1em;
+}
+
+#nav {
+	margin: 1em;
+}
+
+ul {
+    list-style-type: none;
+    display: table;
+}
+
+ul li {
+    display: table-row;
+}
+
+ul li * {
+    display: table-cell;
+    vertical-align: middle;
+    align: left;
+    padding: .1em .5em;
+}
+
+/* Upload */
+form {
+    margin: 1em 1em;
+}
+
+form h2 {
+    text-decoration: underline;
+}
+
+#upload-progress {
+	margin-left: 1em;
+}
+
+#upload-progress .name {
+	font-weight: bold;
+}
+</style>
+</head>
+<body>
+<h1>Directory Index for {{.DirName}}</h1>
+<a href="/.well-known/archive{{.DirName}}" id="download-link">Download directory as archive</a>
+<div id="nav">
+{{range $component := .DirComponents}}
+	/ <a href="{{$component.Link}}">{{$component.Name}}</a>
+{{end}}
+</div>
+<ul id="files">
+{{range $file := .Files}}
+    <li>
+        <img src="{{$file.Icon}}">
+        <a href="{{$file.Link}}">{{$file.Name}}</a>
+        <span>{{$file.Annotation}}</span>
+    </li>
+{{end}}
+	<template id="directory-item">
+		<li class="new">
+			<img src="">
+			<a href=""></a>
+			<span></span>
+		</li>
+	</template>
+</ul>
+{{if .ReadOnly}}
+{{else}}
+<form method="post" enctype="multipart/form-data" action="/.well-known/upload" id="upload-form">
+    <h2>Upload</h2>
+    <input type="hidden" name="path" value="{{.DirName}}">
+    <input type="file" name="file" multiple>
+    <input type="submit">
+</form>
+<div id="upload-progress">
+    <template id="upload-progress-template">
+        <div>
+            <progress max="1000" value="0" class="progress"></progress> 
+            <span class="name"></span>
+            <button class="abort">❌</button>
+            <span class="message"></span>
+        </div>
+    </template>
+</div>
+<script type="application/javascript">
+(() => {
+    let form = document.querySelector("#upload-form");
+    let formFileField = form.querySelector("input[name=file]");
+    let formPathField = form.querySelector("input[name=path]");
+
+    class FileUpload {
+		/* Manages upload of a file, both for DragNDrop and form; offers UI with progress and abort button */
+        constructor(file) {
+			/* Create UI */
+            this.uploadMonitor = document.querySelector("#upload-progress-template").content.firstElementChild.cloneNode(true);
+            this.uploadMonitor.querySelector(".name").innerText = file.name;
+            this.uploadMonitor.querySelector(".abort").addEventListener("click", (e) => this.abort(e), true);
+            this.progressBar = this.uploadMonitor.querySelector(".progress");
+			this.message = this.uploadMonitor.querySelector(".message");
+            document.querySelector("#upload-progress").appendChild(this.uploadMonitor);
+
+			/* Stores if the upload is done */
+            this.ended = false;
+
+			/* Start upload */
+            let uploadForm = new FormData();
+            uploadForm.append("path", formPathField.value);
+            uploadForm.append("file", file);
+            this.req = new XMLHttpRequest();
+            this.req.upload.onprogress = (e) => this.progress(e);
+            this.req.onload = (e) => this.uploadDone();
+            this.req.onerror = (e) => this.endWith("Upload failed: " + e);
+            this.req.open("POST", form.action);
+			this.req.setRequestHeader("Accept", "application/json");
+            this.req.send(uploadForm);
+        }
+
+        remove() {
+            this.uploadMonitor.parentNode.removeChild(this.uploadMonitor);
+        }
+
+        endWith(msg) {
+			/* Display message, delete UI after 3.5s */
+            if(this.ended) return;
+            this.ended = true;
+
+            let abortButton = this.uploadMonitor.querySelector(".abort");
+            abortButton.parentNode.removeChild(abortButton);
+            this.uploadMonitor.querySelector(".message").innerText = msg;
+
+            setTimeout((e) => this.uploadMonitor.classList.add("hide"), 3000);
+            setTimeout((e) => this.remove(), 3500);
+        }
+
+        abort(e) {
+            e.preventDefault();
+            this.req.abort();
+            this.endWith("Aborted");
+            return false;
+        }
+
+        progress(e) {
+            let progress = e.loaded * 1000 / e.total;
+            this.progressBar.value = progress;
+
+			var suffix, div;
+			if(e.total > (1<<30)) {
+				suffix = "GiB";
+				div = (1<<30);
+			}
+			else if(e.total > (1<<20)) {
+				suffix = "MiB";
+				div = (1<<20);
+			}
+			else if(e.total > (1<<10)) {
+				suffix = "KiB";
+				div = (1<<10);
+			}
+			else {
+				suffix = "B";
+				div = 1;
+			}
+
+			let fmt = Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+			this.message.innerText = fmt.format(e.loaded / div) + " / " + fmt.format(e.total / div) + " " + suffix;
+        }
+
+		uploadDone() {
+			if(this.req.status != 200) {
+				this.endWith("Unexpected status: " + this.req.status);
+			}
+
+			/* Add new items in file list for uploaded files. */
+			let newFiles = JSON.parse(this.req.responseText);
+			let files = document.querySelector("#files");
+			let fileTemplate = files.querySelector("template");
+			for(let file of newFiles) {
+				let render = fileTemplate.content.firstElementChild.cloneNode(true);
+				render.querySelector("img").src = file.icon;
+				let a = render.querySelector("a");
+				a.href = file.link;
+				a.innerText = file.name;
+				render.querySelector("span").innerText = file.annotation;
+
+				/* Uses insertion sort, removing element with same name if it exists. natsort in go and here probably differ a bit. */
+				let existingFile = files.firstElementChild;
+				while(existingFile.querySelector("img[src*=folder]")) existingFile = existingFile.nextElementSibling;
+				while(existingFile.querySelector("a").innerText.localeCompare(file.name, undefined, {numeric: true, sensitivity: "base"}) != 1) {
+					if(existingFile.querySelector("a").innerText == render.querySelector("a").innerText) {
+						let oldFile = existingFile;
+						existingFile = existingFile.nextElementSibling;
+						files.removeChild(oldFile);
+						break;
+					}
+					existingFile = existingFile.nextElementSibling;
+					if(existingFile.nodeName != "LI") {
+						break;
+					}
+				}
+				files.insertBefore(render, existingFile || null);
+
+				setTimeout((e) => render.classList.add("noLongerNew"), 1000);
+				setTimeout((e) => render.classList.remove("new", "noLongerNew"), 1500);
+			}
+
+			this.endWith("Upload complete");
+		}
+    }
+
+	/* Use JS to upload from form */
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        for(let file of formFileField.files) {
+            new FileUpload(file);
+        }
+        return false;
+    }, true);
+
+	/* Catch DragNDrop events for upload */
+    document.body.addEventListener("dragenter", (e) => {
+        if(e.dataTransfer.items.length == 0 || e.dataTransfer.items[0].kind != "file") {
+            return true;
+        }
+		document.body.classList.add("dragOver");
+        e.preventDefault();
+		return true;
+    });
+    document.body.addEventListener("dragover", (e) => e.preventDefault(), false);
+	document.body.addEventListener("dragleave", (e) => {
+		document.body.classList.remove("dragOver");
+		e.preventDefault()
+		return true;
+	}, false);
+    document.body.addEventListener("drop", (e) => {
+        e.preventDefault();
+		document.body.classList.remove("dragOver");
+        for(let file of e.dataTransfer.files) {
+            new FileUpload(file);
+        }
+		return true;
+    }, false);
+})();
+</script>
+{{end}}
+</body>
