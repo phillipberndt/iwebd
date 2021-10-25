@@ -12,11 +12,11 @@ jobs:
       with:
         go-version: '1.17.0'
     - name: compile and release
-      uses: ngs/go-release.action@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GOARCH: amd64
-        GOOS: linux
+      uses: wangyoucao577/go-release-action@v1.20
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goarch: amd64
+        goos: linux
   release-linux-arm:
     name: release linux/arm
     runs-on: ubuntu-latest
@@ -26,8 +26,8 @@ jobs:
       with:
         go-version: '1.17.0'
     - name: compile and release
-      uses: ngs/go-release.action@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GOARCH: arm
-        GOOS: linux
+      uses: wangyoucao577/go-release-action@v1.20
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goarch: arm
+        goos: linux
