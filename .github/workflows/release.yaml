@@ -15,7 +15,7 @@ jobs:
         goarch: amd64
         goos: linux
   release-linux-arm:
-    name: release linux/arm
+    name: release linux/arm64
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -23,5 +23,5 @@ jobs:
       uses: wangyoucao577/go-release-action@v1.20
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        goarch: arm
+        goarch: arm64
         goos: linux
