@@ -66,7 +66,7 @@ func getIconURI(file fs.FileInfo, headerGetter func() []byte) string {
 }
 
 // Load a given icon from the embedded file icon archive.
-func getNamedIcon(icon string) (io.ReadSeeker) {
+func getNamedIcon(icon string) io.ReadSeeker {
 	if icons == nil {
 		compressedArchiveReader := bytes.NewReader(iconsArchive)
 		archiveReader := bzip2.NewReader(compressedArchiveReader)

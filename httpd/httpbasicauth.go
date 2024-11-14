@@ -9,7 +9,7 @@ import (
 // Wrap a http handler to require basic authentication.
 //
 // The realm is hard-coded to iwebd.
-func WithAuth(h http.Handler, auth *util.UserPass) (http.Handler) {
+func WithAuth(h http.Handler, auth *util.UserPass) http.Handler {
 	if auth == nil || !auth.IsSet() {
 		return h
 	}
@@ -23,5 +23,5 @@ func WithAuth(h http.Handler, auth *util.UserPass) (http.Handler) {
 
 		w.Header().Set("WWW-Authenticate", `Basic realm="iwebd", charset="UTF-8"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-    })
+	})
 }

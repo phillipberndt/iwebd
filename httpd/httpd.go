@@ -4,12 +4,11 @@
 // "download as archive" functionality,
 // multi-file upload (form/drag-n-drop), and
 // javascript managed upload with progress display.
-//
 package httpd
 
 import (
-	"context"
 	"archive/tar"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -108,7 +107,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		handle, err := os.OpenFile(targetPath, os.O_WRONLY | os.O_CREATE, 0644)
+		handle, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE, 0644)
 		if err != nil {
 			http.Error(w, "Couldn't open file for writing", 500)
 			continue
@@ -161,7 +160,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 func Serve(cmd *cobra.Command, args []string) {
 	useTls, _ := cmd.Flags().GetBool("tls")
 	addr, _ := cmd.Flags().GetString("addr")
-	auth, _ := cmd.Flags().Lookup("auth").Value.(*util.UserPass);
+	auth, _ := cmd.Flags().Lookup("auth").Value.(*util.UserPass)
 	readOnly, _ := cmd.Flags().GetBool("read-only")
 
 	util.Log.Info("%s server starting", "http")
@@ -175,12 +174,12 @@ func Serve(cmd *cobra.Command, args []string) {
 		}
 	}
 	s := &http.Server{
-		Handler: WithHttpLogging(WithAuth(m, auth)),
+		Handler:   WithHttpLogging(WithAuth(m, auth)),
 		TLSConfig: tlsConfig,
 	}
 	m.HandleFunc("/.well-known/icons/", ServeIcon)
 	m.HandleFunc("/.well-known/archive/", archive)
-	if(!readOnly) {
+	if !readOnly {
 		m.HandleFunc("/.well-known/upload", upload)
 	}
 	m.Handle("/", http.FileServer(&fancyDirectoryIndex{http.Dir("./"), readOnly}))
@@ -206,7 +205,7 @@ func Serve(cmd *cobra.Command, args []string) {
 
 	quitNotifier := make(chan int)
 	go func() {
-		var err error;
+		var err error
 		if !useTls {
 			err = s.Serve(listener)
 		} else {
@@ -215,11 +214,11 @@ func Serve(cmd *cobra.Command, args []string) {
 		if err != nil && err != http.ErrServerClosed {
 			util.Log.Error("Failure while serving: %v", err)
 		}
-		quitNotifier <- 0;
+		quitNotifier <- 0
 	}()
 
 	util.WaitToQuit(quitNotifier)
 
-	ctx, _ := context.WithTimeout(context.Background(), 5 * time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	s.Shutdown(ctx)
 }

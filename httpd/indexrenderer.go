@@ -30,10 +30,10 @@ func renderDirectoryIndexPage(dirName string, files []fileContentsFragment, Read
 		Name string
 	}
 	type TemplateInput struct {
-		DirName string
+		DirName       string
 		DirComponents []TemplateInputDirComponent
-		Files   []fileContentsFragment
-		ReadOnly bool
+		Files         []fileContentsFragment
+		ReadOnly      bool
 	}
 	var components []TemplateInputDirComponent
 	link := ""
@@ -49,10 +49,10 @@ func renderDirectoryIndexPage(dirName string, files []fileContentsFragment, Read
 	}
 
 	input := TemplateInput{
-		DirName: dirName,
+		DirName:       dirName,
 		DirComponents: components,
-		Files:   files,
-		ReadOnly: ReadOnly,
+		Files:         files,
+		ReadOnly:      ReadOnly,
 	}
 
 	builder := strings.Builder{}
