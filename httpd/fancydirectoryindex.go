@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"time"
 
 	"facette.io/natsort"
@@ -17,6 +18,7 @@ import (
 type fancyDirectoryIndex struct {
 	parentFS http.FileSystem
 	readOnly bool
+	liveReload bool
 }
 
 type fileReader struct {
@@ -119,6 +121,9 @@ func (f *fancyDirectoryIndex) Open(name string) (http.File, error) {
 		return file, nil
 	}
 
+	if f.liveReload && strings.HasSuffix(name, ".html") {
+		file = EmbedLiveReload(file)
+	}
 
 	return file, err
 }

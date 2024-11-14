@@ -17,6 +17,7 @@ require (
 	github.com/anacrolix/generics v0.0.0-20230911070922-5dd7545c6b13 // indirect
 	github.com/anacrolix/log v0.14.5 // indirect
 	github.com/bradfitz/iter v0.0.0-20190303215204-33e6a9893b0c // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/miekg/dns v1.1.56 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

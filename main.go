@@ -48,6 +48,7 @@ func main() {
 	httpd.Flags().Var(&util.UserPass{}, "auth", "Credentials to use")
 	httpd.Flags().Bool("tls", false, "Serve https rather than http")
 	httpd.Flags().Bool("read-only", false, "Deny clients write-access")
+	httpd.Flags().Bool("live-reload", false, "Enable/embed live-reload to HTML pages")
 	rootCmd.AddCommand(httpd)
 
 	// ftpd -- ftp server

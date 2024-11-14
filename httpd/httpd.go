@@ -162,6 +162,7 @@ func Serve(cmd *cobra.Command, args []string) {
 	addr, _ := cmd.Flags().GetString("addr")
 	auth, _ := cmd.Flags().Lookup("auth").Value.(*util.UserPass)
 	readOnly, _ := cmd.Flags().GetBool("read-only")
+	liveReload, _ := cmd.Flags().GetBool("live-reload")
 
 	util.Log.Info("%s server starting", "http")
 
@@ -182,7 +183,10 @@ func Serve(cmd *cobra.Command, args []string) {
 	if !readOnly {
 		m.HandleFunc("/.well-known/upload", upload)
 	}
-	m.Handle("/", http.FileServer(&fancyDirectoryIndex{http.Dir("./"), readOnly}))
+	if liveReload {
+		m.HandleFunc("/.well-known/live-reload", LiveReloadFeed)
+	}
+	m.Handle("/", http.FileServer(&fancyDirectoryIndex{http.Dir("./"), readOnly, liveReload}))
 
 	var defaultPort uint16
 	if useTls {

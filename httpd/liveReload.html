@@ -1,0 +1,16 @@
+<script type="application/javascript">
+    window.addEventListener("load", function(e) {
+        var urls = [];
+        urls.push(`f=${document.location.pathname}`);
+        for(var url of performance.getEntries()) {
+            if(url.name.substring(0, location.protocol.length + 2 + location.host.length) == location.protocol + "//" + location.host) {
+                urls.push("f=" + encodeURIComponent(url.name.substring(location.protocol.length + 2 + location.host.length).replace(/\?.+/, "")));
+            }
+        }
+        var urls_str = urls.join("&");
+        var evt = new EventSource("/.well-known/live-reload?" + urls_str);
+        evt.onmessage = function(msg) {
+            location.reload();
+        }
+    }, false);
+</script>
