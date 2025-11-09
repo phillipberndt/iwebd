@@ -19,6 +19,8 @@ var iconsArchive []byte
 var icons map[string][]byte
 var initTime time.Time
 
+const FolderIcon = "/.well-known/icons/folder.png"
+
 // Return the location of an icon to display for a file of a given
 // mime-type within iwebd's HTTP server.
 func iconForMimeType(mimeType string) string {
@@ -37,7 +39,7 @@ func iconForMimeType(mimeType string) string {
 // the first few bytes of the file.
 func getIconURI(file fs.FileInfo, headerGetter func() []byte) string {
 	if file.IsDir() {
-		return "/.well-known/icons/folder.png"
+		return FolderIcon
 	}
 
 	if file.Size() == 0 {

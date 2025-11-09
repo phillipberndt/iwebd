@@ -83,6 +83,13 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	part, err := reader.NextPart()
+	relPath := ""
+	if err == nil && part.FormName() == "relPath" {
+		builder := strings.Builder{}
+		io.Copy(&builder, part)
+		relPath = builder.String()
+		part, err = reader.NextPart()
+	}
 	if err != nil || part.FormName() != "path" {
 		http.Error(w, "Invalid request", 400)
 		return
@@ -101,11 +108,13 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		targetPath := filepath.Join(strings.TrimPrefix(path, "/"), part.FileName())
-		if strings.Contains(targetPath, "..") {
+		targetDir := strings.TrimPrefix(path, "/")
+		targetPath := filepath.Join(targetDir, part.FileName())
+		if strings.Contains(targetPath, "..") || len(targetPath) == 0 || targetPath[0] == '/' {
 			http.Error(w, "Invalid path", 400)
 			return
 		}
+		os.MkdirAll(targetDir, 0755) // TODO Err handling
 
 		handle, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE, 0644)
 		if err != nil {
@@ -126,6 +135,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			handle.Close()
 			os.Remove(targetPath)
 		}
+		util.Log.Info("Uploaded a file to %s", targetPath)
 
 		stat, _ := os.Stat(targetPath)
 		headerGetter := func() []byte {
@@ -138,12 +148,24 @@ func upload(w http.ResponseWriter, r *http.Request) {
 			fp.Close()
 			return header[:]
 		}
-		fileList = append(fileList, fileContentsFragment{
-			Name:       part.FileName(),
-			Link:       part.FileName(),
-			Icon:       getIconURI(stat, headerGetter),
-			Annotation: util.SizeToHumanReadableSize(stat.Size()),
-		})
+		if relPath == "" {
+			// Direct upload of a file
+			fileList = append(fileList, fileContentsFragment{
+				Name:       part.FileName(),
+				Link:       part.FileName(),
+				Icon:       getIconURI(stat, headerGetter),
+				Annotation: util.SizeToHumanReadableSize(stat.Size()),
+			})
+		} else {
+			// Nested upload, only display the folder
+			firstComponent, _, _ := strings.Cut(relPath, "/")
+			fileList = append(fileList, fileContentsFragment{
+				Name:       firstComponent,
+				Link:       firstComponent,
+				Icon:       FolderIcon,
+				Annotation: "",
+			})
+		}
 	}
 
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {

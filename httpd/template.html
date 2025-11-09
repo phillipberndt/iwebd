@@ -108,6 +108,7 @@ form h2 {
 <form method="post" enctype="multipart/form-data" action="/.well-known/upload" id="upload-form">
     <h2>Upload</h2>
     <input type="hidden" name="path" value="{{.DirName}}">
+    <button>Upload directory</button>
     <input type="file" name="file" multiple>
     <input type="submit">
 </form>
@@ -127,23 +128,67 @@ form h2 {
     let formFileField = form.querySelector("input[name=file]");
     let formPathField = form.querySelector("input[name=path]");
 
+    form.querySelector("button").addEventListener("click", e => {
+        e.preventDefault();
+        formFileField.setAttribute("webkitdirectory", "webkitdirectory");
+        e.target.remove();
+        return false;
+    });
+
+    class UploadManager {
+        constructor() {
+            this.capacity = 5;
+            this.backlog = [];
+        }
+
+        add(upload) {
+            if(this.capacity > 0) {
+                this.capacity--;
+                upload();
+            }
+            else {
+                this.backlog.push(upload);
+            }
+        }
+
+        drop(upload) {
+            this.backlog.pop(this.backlog.indexOf(upload));
+        }
+
+        done() {
+            this.capacity += 1;
+            let work = this.backlog.pop(0);
+            if(typeof work != "undefined") {
+                work();
+            }
+        }
+    }
+    let uploadManager = new UploadManager();
+
     class FileUpload {
 		/* Manages upload of a file, both for DragNDrop and form; offers UI with progress and abort button */
         constructor(file) {
 			/* Create UI */
             this.uploadMonitor = document.querySelector("#upload-progress-template").content.firstElementChild.cloneNode(true);
-            this.uploadMonitor.querySelector(".name").innerText = file.name;
+            this.uploadMonitor.querySelector(".name").innerText = file.webkitRelativePath == null ? file.name : file.webkitRelativePath;
             this.uploadMonitor.querySelector(".abort").addEventListener("click", (e) => this.abort(e), true);
             this.progressBar = this.uploadMonitor.querySelector(".progress");
 			this.message = this.uploadMonitor.querySelector(".message");
             document.querySelector("#upload-progress").appendChild(this.uploadMonitor);
 
 			/* Stores if the upload is done */
+            this.started = false;
             this.ended = false;
 
 			/* Start upload */
             let uploadForm = new FormData();
-            uploadForm.append("path", formPathField.value);
+            let path = formPathField.value;
+            if(file.webkitRelativePath != null && file.webkitRelativePath.indexOf("/") >= 0) {
+                let relPath = file.webkitRelativePath.replace(/\/[^\/]+$/, "");
+                uploadForm.append("relPath", relPath);
+                path += relPath;
+            }
+            uploadForm.append("path", path);
             uploadForm.append("file", file);
             this.req = new XMLHttpRequest();
             this.req.upload.onprogress = (e) => this.progress(e);
@@ -151,7 +196,11 @@ form h2 {
             this.req.onerror = (e) => this.endWith("Upload failed: " + e);
             this.req.open("POST", form.action);
 			this.req.setRequestHeader("Accept", "application/json");
-            this.req.send(uploadForm);
+            this.starter = _ => {
+                this.req.send(uploadForm)
+                this.started = true
+            };
+            uploadManager.add(this.starter);
         }
 
         remove() {
@@ -169,11 +218,17 @@ form h2 {
 
             setTimeout((e) => this.uploadMonitor.classList.add("hide"), 3000);
             setTimeout((e) => this.remove(), 3500);
+            uploadManager.done();
         }
 
         abort(e) {
             e.preventDefault();
-            this.req.abort();
+            if(this.started) {
+                this.req.abort();
+            }
+            else {
+                uploadManager.drop(this.starter);
+            }
             this.endWith("Aborted");
             return false;
         }
@@ -223,19 +278,19 @@ form h2 {
 
 				/* Uses insertion sort, removing element with same name if it exists. natsort in go and here probably differ a bit. */
 				let existingFile = files.firstElementChild;
-				while(existingFile.querySelector("img[src*=folder]")) existingFile = existingFile.nextElementSibling;
-				while(existingFile.querySelector("a").innerText.localeCompare(file.name, undefined, {numeric: true, sensitivity: "base"}) != 1) {
-					if(existingFile.querySelector("a").innerText == render.querySelector("a").innerText) {
-						let oldFile = existingFile;
-						existingFile = existingFile.nextElementSibling;
-						files.removeChild(oldFile);
-						break;
-					}
-					existingFile = existingFile.nextElementSibling;
-					if(existingFile.nodeName != "LI") {
-						break;
-					}
-				}
+                while(existingFile.querySelector("img[src*=folder]")) existingFile = existingFile.nextElementSibling;
+                while(existingFile.querySelector("a")?.innerText?.localeCompare(file.name, undefined, {numeric: true, sensitivity: "base"}) != 1) {
+                    if(existingFile.querySelector("a")?.innerText == render.querySelector("a").innerText) {
+                        let oldFile = existingFile;
+                        existingFile = existingFile.nextElementSibling;
+                        files.removeChild(oldFile);
+                        break;
+                    }
+                    existingFile = existingFile.nextElementSibling;
+                    if(existingFile?.nodeName != "LI") {
+                        break;
+                    }
+                }
 				files.insertBefore(render, existingFile || null);
 
 				setTimeout((e) => render.classList.add("noLongerNew"), 1000);
@@ -245,6 +300,21 @@ form h2 {
 			this.endWith("Upload complete");
 		}
     }
+
+    let processFileSystemEntry = (entry) => {
+        if(entry.isDirectory) {
+            entry.createReader().readEntries((entries) => {
+                entries.forEach((entry) => {
+                    processFileSystemEntry(entry);
+                });
+            });
+        }
+        else if(entry.isFile) {
+            entry.file((file) => {
+                new FileUpload(file);
+            });
+        }
+    };
 
 	/* Use JS to upload from form */
     form.addEventListener("submit", (e) => {
@@ -273,8 +343,19 @@ form h2 {
     document.body.addEventListener("drop", (e) => {
         e.preventDefault();
 		document.body.classList.remove("dragOver");
-        for(let file of e.dataTransfer.files) {
-            new FileUpload(file);
+        let supportsGetAsEntry = false;
+        for(let item of e.dataTransfer.items) {
+            if(typeof item.webkitGetAsEntry != "function") {
+                continue;
+            }
+            supportsGetAsEntry = true;
+            let entry = item.webkitGetAsEntry();
+            processFileSystemEntry(entry);
+        }
+        if(!supportsGetAsEntry) {
+            for(let file of e.dataTransfer.files) {
+                new FileUpload(file);
+            }
         }
 		return true;
     }, false);
