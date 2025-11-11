@@ -31,13 +31,19 @@ func renderDirectoryIndexPage(dirName string, files []fileContentsFragment, Read
 	}
 	type TemplateInput struct {
 		DirName       string
+		RelativeRootDir  string
 		DirComponents []TemplateInputDirComponent
 		Files         []fileContentsFragment
 		ReadOnly      bool
 	}
 	var components []TemplateInputDirComponent
 	link := ""
-	for i, part := range strings.Split(dirName, "/") {
+	splitDirName := strings.Split(dirName, "/")
+	relativeRootDir := "."
+	if len(splitDirName) > 2 {
+		relativeRootDir = relativeRootDir + strings.Repeat("/..", len(splitDirName) - 2)
+	}
+	for i, part := range splitDirName {
 		link = link + part + "/"
 		if i == 0 {
 			part = "root"
@@ -50,6 +56,7 @@ func renderDirectoryIndexPage(dirName string, files []fileContentsFragment, Read
 
 	input := TemplateInput{
 		DirName:       dirName,
+		RelativeRootDir: relativeRootDir,
 		DirComponents: components,
 		Files:         files,
 		ReadOnly:      ReadOnly,

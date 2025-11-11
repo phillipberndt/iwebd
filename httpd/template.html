@@ -1,4 +1,5 @@
 <!DOCTYPE HTML>
+{{ $root := .RelativeRootDir }}
 <head>
 <meta charset="utf-8">
 <title>Directory Index for {{.DirName}}</title>
@@ -81,16 +82,16 @@ form h2 {
 </head>
 <body>
 <h1>Directory Index for {{.DirName}}</h1>
-<a href="/.well-known/archive{{.DirName}}" id="download-link">Download directory as archive</a>
+<a href="{{$root}}/.well-known/archive{{.DirName}}" id="download-link">Download directory as archive</a>
 <div id="nav">
 {{range $component := .DirComponents}}
-	/ <a href="{{$component.Link}}">{{$component.Name}}</a>
+	/ <a href="{{$root}}{{$component.Link}}">{{$component.Name}}</a>
 {{end}}
 </div>
 <ul id="files">
 {{range $file := .Files}}
     <li>
-        <img src="{{$file.Icon}}">
+        <img src="{{$root}}{{$file.Icon}}">
         <a href="{{$file.Link}}">{{$file.Name}}</a>
         <span>{{$file.Annotation}}</span>
     </li>
@@ -105,7 +106,7 @@ form h2 {
 </ul>
 {{if .ReadOnly}}
 {{else}}
-<form method="post" enctype="multipart/form-data" action="/.well-known/upload" id="upload-form">
+<form method="post" enctype="multipart/form-data" action="{{$root}}/.well-known/upload" id="upload-form">
     <h2>Upload</h2>
     <input type="hidden" name="path" value="{{.DirName}}">
     <button>Upload directory</button>
@@ -270,7 +271,7 @@ form h2 {
 			let fileTemplate = files.querySelector("template");
 			for(let file of newFiles) {
 				let render = fileTemplate.content.firstElementChild.cloneNode(true);
-				render.querySelector("img").src = file.icon;
+				render.querySelector("img").src = {{$root}} + file.icon;
 				let a = render.querySelector("a");
 				a.href = file.link;
 				a.innerText = file.name;
