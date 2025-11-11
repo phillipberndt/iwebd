@@ -109,9 +109,9 @@ form h2 {
 <form method="post" enctype="multipart/form-data" action="{{$root}}/.well-known/upload" id="upload-form">
     <h2>Upload</h2>
     <input type="hidden" name="path" value="{{.DirName}}">
-    <button>Upload directory</button>
     <input type="file" name="file" multiple>
-    <input type="submit">
+	<input type="submit"><br/>
+	(Click to switch to uploading <a href="#">a directory</a> instead)
 </form>
 <div id="upload-progress">
     <template id="upload-progress-template">
@@ -129,10 +129,16 @@ form h2 {
     let formFileField = form.querySelector("input[name=file]");
     let formPathField = form.querySelector("input[name=path]");
 
-    form.querySelector("button").addEventListener("click", e => {
+    form.querySelector("a").addEventListener("click", e => {
         e.preventDefault();
-        formFileField.setAttribute("webkitdirectory", "webkitdirectory");
-        e.target.remove();
+        if(e.target.innerText == "a directory") {
+            formFileField.setAttribute("webkitdirectory", "webkitdirectory");
+            e.target.innerText = "a file";
+        }
+        else {
+            formFileField.removeAttribute("webkitdirectory");
+            e.target.innerText = "a directory";
+        }
         return false;
     });
 
